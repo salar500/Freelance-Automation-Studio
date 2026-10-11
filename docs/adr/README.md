@@ -1,0 +1,5 @@
+# Architecture decision records
+
+No technical decisions have been approved. P3 now allocates ADR-0001 through ADR-0008, all PROPOSED; the [architecture book](../governance/03-architecture-book.md#adr-inventory) is their navigation index. Allocate ADR-XXXX only when a significant decision is proposed. Record title/date/status, context, linked requirements, considered options, evidence (including Windows support and licenses where relevant), choice, consequences, risks, approving authority and supersession links. Status: proposed, approved, rejected or superseded. Preserve historical records; a later ADR supersedes rather than erases an approved decision.
+
+The [architecture book](../governance/03-architecture-book.md) owns the decision process; the [master rulebook](../governance/00-master-rulebook.md) owns identifier conventions. Acceptance: unique identifiers, explicit decision status, evidence/rationale and valid trace links. P0 allocated no ADRs; P3 records explicitly unapproved proposals.
