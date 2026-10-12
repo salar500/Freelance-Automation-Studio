@@ -1,15 +1,10 @@
-# P5 preserved workload checkpoint review — approval gated
+# P5 fallback interface review — approval gated
 
-PROJECT: Freelance Automation Studio
-ROLE: Software reliability and milestone evidence reviewer.
-MODE: Read-only review, only after explicit owner authorization. Do not execute automatically.
+ROLE: Reliability and UX feasibility reviewer. PROJECT: Freelance Automation Studio.
+MODE: Read-only review after explicit owner authorization;do not execute automatically.
 
-Read AGENTS.md, the execution book, P5 milestone report, decision package, prerequisite plan, experiment matrix and portable-core README. Inspect branch, HEAD, status, the latest workload checkpoint commit and its remote SHA. Use the existing checkout; preserve all work.
+Read AGENTS.md,relevant governance,the latest P5 milestone report/decision package,prototype README,presentation.py and test_presentation.py. Inspect branch,HEAD,status and preserve all uncommitted work. Expected starting checkpoint:feature/p5-portable-core at944a7a36dae32239a04cfdfa5d824de57b02a80e,with bounded fallback implementation/documentation pending. Investigate discrepancies;do not reset or discard work.
 
-Review the committed portable-core/resource changes and evidence: original50tests preserved,14added tests,64prototype tests passing and17synthetic workload expectations. Verify which evidence was actually executed and distinguish retained benchmark measurements from checkpoint reruns. Assess input preservation,artifact integrity,cancellation,recovery,resource limits and REVIEW_REQUIRED outputs. Do not repeat experiments merely to restate valid evidence.
+Review real application-service integration,thread/cancellation/error boundaries,persisted status,artifact review/checksum and approval preservation. Assess existing74test evidence and5-to3CSVdemo;do not invent a native window or Windows proof. Explain what remains for a future explicitly approved native desktop experiment using existing Qt/license/native evidence,without repeating completed portable-core prerequisites.
 
-Report remaining native Windows and distribution/license prerequisites using existing evidence;do not infer production-stack adoption. Preserve P5BLOCKED,B02/B04OPEN,B03RESOLVED,eightproductionADRsPROPOSED,239full-productacceptanceNOT_RUN and P0–P4documentarycompletion. Linux measurements are not Windows proof.
-
-Restrictions: no file edits,source implementation,dependency download/installation,executable experiments,Windows changes,ADR approval,Git staging/commit/push/merge/reset/clean,orP6. Stop on repository discrepancies and report them.
-
-Acceptance: checkpoint identity and scope verified;actual test/benchmark evidence distinguished;remaining native/distribution gates accurately reported. Final report:repository baseline,checkpoint scope,evidence review,remaining risks,actual P5status andexactlyONE recommended next action. Stop for owner review;do not advance milestones.
+Deliver report:repository baseline,implementation scope,actual evidence,remaining UI/native/distribution limitations,approval prerequisites and exactlyONE recommended next action. No edits,dependency installs/downloads,executable experiments,ADR approval,Git staging/commit/push/merge/reset/clean,production framework adoption orP6. P5remainsBLOCKED;B02/B04OPEN,B03RESOLVED;eightADRsPROPOSED;239full-productcasesNOT_RUN. Stop for ownerreview.

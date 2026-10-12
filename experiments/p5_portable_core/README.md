@@ -187,3 +187,13 @@ pending. No production architecture ADR is approved. The 239 previously planned
 product acceptance cases remain distinct from these executed prototype tests.
 
 Governance/evidence: [P5 milestone report](../../docs/milestone-reports/MS-0006-P5.md).
+
+## Experimental presentation fallback
+No dependencies added. This is a terminal interface and testable UI adapter,not a native desktop window. The core remains independent of presentation. Use only synthetic CSVs.
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python -m experiments.p5_portable_core.presentation --workspace /tmp/fas-ui --demo experiments/p5_portable_core/fixtures/duplicates.csv
+PYTHONDONTWRITEBYTECODE=1 python -m experiments.p5_portable_core.presentation --workspace /tmp/fas-ui-interactive
+```
+
+Interactive controls: `list`, `select "path.csv"`, `start`, `status`, `cancel`, `wait`, `review`, `quit`. Configuration is exact duplicate removal only; unsupported configuration is rejected. Review revalidates artifact bytes/checksums;it cannot grant approval. Progress contains the last observed row counts;the separately displayed persisted job state is authoritative. Wait has a bounded timeout;quit cancels/awaits active work. One active job per adapter. No Qt installation,production framework decision or Windows GUI/accessibility evidence.
