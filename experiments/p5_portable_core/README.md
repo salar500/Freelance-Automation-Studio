@@ -11,7 +11,8 @@ python -m experiments.p5_portable_core --workspace /tmp/fas-p5-demo process expe
 ```
 
 The synthetic fixture has five records and two exact duplicates. The result has
-three records in first-occurrence order. Progress is JSON on stderr; the final
+three records in first-occurrence order. CLI progress is JSON on stderr for the
+first row and every 100 rows; the final
 job/attempt/artifact result is JSON on stdout. The output is **REVIEW_REQUIRED**,
 never approved for client delivery. Use a fresh owned workspace outside the
 repository; the above command creates another isolated job if run again.
@@ -93,9 +94,25 @@ WORKSPACE/jobs/JOB_ID/attempts/ATTEMPT_ID/output.csv
 ## Limits and pending work
 
 Use synthetic data only. Default experimental bounds are 32 MiB input and
-100,000 records; they are safety limits, not measured performance guarantees.
-Deduplication keeps unique rows in memory and persists progress per record.
-UTF-8 field limits also follow the installed Python CSV parser's defaults.
+100,000 records; they are safety limits, not performance guarantees. Additional
+defaults: 131,072 characters per field (or the existing CSV parser's lower cap),
+256 columns, 64 MiB of estimated unique-row storage, 16 MiB free-space reserve
+and a 30-second cooperative processing deadline. Constructor overrides are
+explicit experiment controls, not approved production settings.
+
+Deduplication keeps unique rows in memory. The memory estimate counts tuples,
+strings and the set table; it is not a hard total-process RSS limit. Disk preflight
+reserves input-copy/output space and periodic checks detect shrinking free space;
+other processes can still consume the volume. Cooperative deadlines cannot
+interrupt a blocked kernel operation. Benchmark children use separate hard
+limits and a parent watchdog; the normal CLI does not provide a security sandbox.
+
+Cancellation is checked each row using a reused SQLite read connection. Progress
+is persisted every 100 rows and at successful/failed/cancelled boundaries. An
+abrupt crash can lose up to 99 progress-counter updates; it cannot turn incomplete
+artifacts into approved output. Recovery uses hashes/filesystem evidence, not
+progress counts to infer success. API callbacks remain per-row; CLI logging is
+throttled independently to limit redirected log growth.
 CSV formulas are preserved as text; opening them in a spreadsheet could execute
 formulas. This experiment does not provide formula-safe client export.
 
@@ -132,6 +149,37 @@ renaming/removing files. Quarantined unreadable output stays ineligible even
 after access is restored; review or an explicitly authorized correction is
 needed. Legacy attempts without recorded paths may have incomplete evidence.
 Host/filesystem/device behavior under physical power loss remains unproven.
+
+## Bounded Linux workload verification
+
+Run the deterministic synthetic harness, keeping all generated files outside Git:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python -m experiments.p5_portable_core.workloads --include-500k --output /tmp/fas-p5-workload-results.json
+```
+
+It covers empty/header-only/small CSVs, 1k/10k/100k duplicate-heavy and mostly
+unique records, Unicode and mixed text lengths, invalid rows, large/oversized
+fields, cancellation, repeated execution and the default row-limit rejection.
+The 500k profiles explicitly override only `max_rows`; input,
+field, memory, disk and deadline guards remain active. Admission depends on
+measured 100k resource use and disk headroom. The mostly unique 500k profile
+expects safe `RESOURCE_MEMORY` rejection rather than full completion under the
+default memory budget. The verified run stopped after 163,276 records with
+84.2 MiB peak RSS; the 64 MiB dedup estimate excludes interpreter/other overhead.
+
+The measurement harness requires Linux. Fresh serial children use 256 MiB
+address-space and 60-second CPU limits, with a 120-second parent watchdog. It
+measures execution/CPU time, peak RSS, input/output/SQLite size, cancellation and
+recovery, plus 10 ms sampled disk peaks. Samples may miss transient peaks and
+monitoring adds overhead. Results are API execution timings, not GUI/installer
+or full CLI rendering performance. Fixture generation remains importable for
+tests on other platforms, but those platforms have not been validated here.
+
+Resource regression tests are in `tests/test_resources.py`; all original 50 tests
+are preserved. Actual measurements and known limits are recorded in the P5
+milestone report. No generated dataset, workspace, database or benchmark JSON
+is added to source control.
 
 The Linux implementation is tested; the Windows `msvcrt` lock branch, native
 GUI, installer, full dependency/license clearance and performance budgets remain

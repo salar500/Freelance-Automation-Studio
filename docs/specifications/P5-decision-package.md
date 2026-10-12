@@ -1149,3 +1149,35 @@ ACCEPTANCE: Crash/cancel/storage faults produce accurate durable state or explic
 
 FINAL: Baseline/files/codechanges;actual executable command/demo;test results;fault/recovery evidence;remaining limits/risks;milestone/ADR/blocker states;exactlyONE next action. SaveONE complete gated next prompt;do not execute it. Stop for owner review.
 ```
+
+## Portable-core workload verification update — 2026-10-12 UTC
+Owner authorized actual workload execution/resource fixes from feature/p5-portable-core HEAD37fb9ab3c74c92d8d4226429422bedf08c3a6a27(clean starting tree). Standardlibrary core reused cancellation connection,batched progress100rows/terminalflush and boundedCLIlogs;added input/field/columns/dedup-estimate/disk/deadline guards. Existing50tests preserved;14newresource regressions;final64PASS. Synthetic17workload expectationsPASS,includingfull500kduplicate processing andsafe500kmostlyunique memoryrejection,invalid/empty/largefield/rowlimit/cancel/repeatprofiles. Originalhashes/outputoracles/DBintegrity/history/repeatedrecoveryPASS. Actual benchmark method,tables,cancellation/storage/recovery measurements/variability/limits live in [P5 milestone report](../milestone-reports/MS-0006-P5.md);don't duplicate governancepolicies or claimWindows performance.
+
+WorkloadsubtaskREADY_FOR_REVIEW,overallP5BLOCKED;B02/B04OPEN,B03RESOLVED;8ADRsPROPOSED;239originalproductacceptancecasesNOT_RUN. Memoryestimate64MiB isnot hardRSS bound;cooperativedeadlines/diskchecks notOSisolation;LinuxharnessAS256MiB/CPU60s/watchdog120s separate. Thirtyseconds/100kdefaultlimits remainprototypesafetysettings,not approvedNFRtargets. Benchmark500kexplicitrowoverride doesnotchangeordinaryCLIdefaults. No generateddatasets/resultsDBs inrepo,no install/download/clientdata/Gitmutation/P6. Exactly one next action:review measurements and approve saved controlledworkloadimplementation checkpoint.
+
+### Consumed workload prompt — bounded task executed, P5 still blocked
+```text
+# P5 portable core — bounded workload/resource verification
+
+ROLE: Python performance/reliability engineer and QA architect.
+PROJECT: Freelance Automation Studio.
+MODE: Bounded prototype implementation/measurement only after explicit owner approval of this follow-up. Do not execute automatically or beginP6.
+
+CONTEXT: Existing experiments/p5_portable_core standard-library CLI uses hostPython3.12.14/Linux/sqlite3.53.1;50tests passed(29original+21crash-consistency). Schema2journals paths,reconciles/quarantines partial/missing/tampered outputs,terminal eligibility/outcome commit atomically,and real subprocess crash recovery is idempotent. P5BLOCKED,B02/B04OPEN,B03RESOLVED;productionADRsPROPOSED. No Windows inventory is a prerequisite for this bounded cloud experiment.
+
+CHECKPOINT: Read AGENTS/master/development/testing/security/execution books,current prompt,P5report/matrix/decisionpackage,prototypeREADME/source/tests. Verify feature/p5-portable-core at the controlled implementation checkpoint:commit title feat: add P5 portable processing core and crash recovery,parent15acfb58dfa9f9616b60b2c41c771953cbfc878c,and localHEAD matching origin branch;inspect actual SHA/status rather than assuming a hash;inspect actual Git status and preserve every unrelated doc/source;checkpoint task did not authorize this workload execution. Run existing focused suite once before changes. Never discard earlier tests/evidence.
+
+OBJECTIVE: Measure synthetic bounded1000/10000record workloads for duplicate handling,SQLite progress costs,cancellation and recovery;record hardware/environment/time/output sizes/memory measurement method/limitations. Use standardlibrary time/tracemalloc/resource where available,not assumed Windows metrics. Stop on unacceptable resource use;do not extrapolate to100k/Windows/released-app performance without evidence. Preserve deterministic output/original hashes.
+
+SCOPE: Add reproducible synthetic workload harness/test fixtures outside runtime client data;implement only measured small optimizations if actual bottlenecks justify them,keeping durable crash/cancel semantics. Consider bounded progress batching only if tests establish loss-of-progress versus loss-of-output semantics explicitly. Do not prematurely add async frameworks/microservices/newdependencies/UI/installer/othermodules/production33entityschema.
+
+DELIVERABLES: Existing portable source/tests/README and relevant P5 docs only;actual commands/dataset/environment/measurement table/artifact checksums/limits. Preserve50existing tests;add meaningful tests for changed behavior. No silent numericNFRapproval;reported measurements are not performance promises.
+
+VERIFY: Changed tests first,then fullportable suite once afterchanges;CLI/data-integrity/crash/cancel/recovery regressions as justified. Docslinks/IDs/status/protectedhashes/Gitdiff scope.239original product acceptance cases remainNOT_RUN unless complete procedures genuinely executed;prototype execution separate. No WindowsGUI/native/installer/security/physicalpowerloss claims fromLinux.
+
+RESTRICTIONS: No downloads/installations/Qt/.NET/runtimeartifactexecution/realclientdata/externalAPI/AIruntime,productionADRapproval,Gitstage/commit/push/merge/reset/clean,deployment orP6. ExistingPythonstdlib prototype execution authorized only by owner approval of this task. Cleanup owned disposable data only;retain failure evidence.
+
+ACCEPTANCE: Reproducible actual measurements,verified output/original integrity,cancel/recovery correctness,no unexplained regressions. Missing measurements/errors recorded honestly;P5overallBLOCKED untilremainingnative/distribution prerequisites genuinely met.
+
+FINAL: Baseline/files;actual executable/workload commands;measurement method/results;tests/counts;integrity/cancel/recovery evidence;limits;Git/blocker/ADR states;exactlyONE nextrecommendedaction. SaveONE complete approval-gated nextprompt;do not execute it. Stop for ownerreview.
+```

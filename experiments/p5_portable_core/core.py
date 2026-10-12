@@ -4,9 +4,12 @@ from contextlib import closing, contextmanager
 import csv
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import sqlite3
+import shutil
+import sys
 import time
 import uuid
 
@@ -70,7 +73,18 @@ class Engine:
     """
 
     def __init__(self, workspace, *, max_input_bytes=32 * 1024 * 1024,
-                 max_rows=100_000, fault_hook=None):
+                 max_rows=100_000, fault_hook=None, checkpoint_rows=100,
+                 max_field_chars=131_072, max_columns=256,
+                 max_unique_memory_bytes=64 * 1024 * 1024,
+                 min_free_bytes=16 * 1024 * 1024, timeout_seconds=30):
+        integers = (max_input_bytes, max_rows, checkpoint_rows, max_field_chars,
+                    max_columns, max_unique_memory_bytes)
+        if any(not isinstance(n, int) or isinstance(n, bool) or n <= 0 for n in integers):
+            raise JobError("RESOURCE_CONFIG", "Resource limits must be positive integers.")
+        if not isinstance(min_free_bytes, int) or min_free_bytes < 0:
+            raise JobError("RESOURCE_CONFIG", "Free-space reserve must be nonnegative.")
+        if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
+            raise JobError("RESOURCE_CONFIG", "Processing deadline must be finite and positive.")
         root = Path(workspace).absolute()
         if root.is_symlink():
             raise JobError("UNSAFE_WORKSPACE", "Workspace must not be a symbolic link.")
@@ -79,6 +93,12 @@ class Engine:
         self.db_path = self.root / "jobs.sqlite3"
         self.max_input_bytes = max_input_bytes
         self.max_rows = max_rows
+        self.checkpoint_rows = checkpoint_rows
+        self.max_field_chars = min(max_field_chars, csv.field_size_limit())
+        self.max_columns = max_columns
+        self.max_unique_memory_bytes = max_unique_memory_bytes
+        self.min_free_bytes = min_free_bytes
+        self.timeout_seconds = timeout_seconds
         self.fault_hook = fault_hook  # Trusted test code only; never loaded from job configuration.
         with self._db() as db:
             version = db.execute("PRAGMA user_version").fetchone()[0]
@@ -97,6 +117,22 @@ class Engine:
     def _checkpoint(self, name, **context):
         if self.fault_hook:
             self.fault_hook(name, context)
+
+    def _check_disk(self, required_bytes):
+        if shutil.disk_usage(self.root).free < required_bytes + self.min_free_bytes:
+            raise JobError("RESOURCE_DISK", "Workspace free-space reserve is insufficient.", retryable=True)
+
+    @staticmethod
+    def _check_deadline(deadline):
+        if time.monotonic() >= deadline:
+            raise JobError("RESOURCE_TIMEOUT", "Experimental processing deadline exceeded.", retryable=True)
+
+    def _persist_progress(self, attempt_id, count, kept):
+        try:
+            with self._db() as db:
+                db.execute("UPDATE attempts SET input_rows=?,output_rows=? WHERE id=?", (count, kept, attempt_id))
+        except (sqlite3.Error, OSError):
+            raise JobError("STATE_PERSISTENCE", "Progress could not be saved; run recovery.", retryable=True) from None
 
     @staticmethod
     def _sync_directory(path):
@@ -166,6 +202,7 @@ class Engine:
             raise JobError("INPUT_MISSING", "Input file does not exist.")
         if source.stat().st_size > self.max_input_bytes:
             raise JobError("INPUT_TOO_LARGE", "Input exceeds the experimental size limit.")
+        self._check_disk(source.stat().st_size)
         job_id = uuid.uuid4().hex
         folder = self._path(f"jobs/{job_id}")
         folder.mkdir(parents=True, exist_ok=False)
@@ -218,9 +255,12 @@ class Engine:
             db.execute("UPDATE jobs SET cancel_requested=1 WHERE id=?", (job_id,))
             self._event(db, job_id, None, "CANCEL_REQUESTED", {})
 
-    def _check_cancel(self, job_id):
-        with self._db() as db:
-            row = db.execute("SELECT cancel_requested FROM jobs WHERE id=?", (job_id,)).fetchone()
+    def _check_cancel(self, job_id, connection=None):
+        if connection is None:
+            with self._db() as db:
+                row = db.execute("SELECT cancel_requested FROM jobs WHERE id=?", (job_id,)).fetchone()
+        else:
+            row = connection.execute("SELECT cancel_requested FROM jobs WHERE id=?", (job_id,)).fetchone()
         if row[0]:
             raise _Cancelled()
 
@@ -273,49 +313,67 @@ class Engine:
                 self._event(db, job_id, attempt_id, "STARTED", {})
             count = kept = 0
             committed = False
+            deadline = time.monotonic() + self.timeout_seconds
             try:
                 self._checkpoint("attempt_started", job_id=job_id, attempt_id=attempt_id)
                 self._check_cancel(job_id)
                 source = self._path(job["input_path"])
+                self._check_disk(source.stat().st_size * 2)
+                self._check_deadline(deadline)
                 if checksum(source) != job["input_sha256"]:
                     raise JobError("INPUT_INTEGRITY", "The input snapshot has changed.")
                 with self._db() as db:
                     db.execute("UPDATE attempts SET phase='RUNNING' WHERE id=?", (attempt_id,))
                 seen = set()
-                with source.open("r", encoding="utf-8-sig", newline="") as inp, staging.open(
+                unique_storage = 0
+                # Reuse a read-only cancellation connection. It never holds a write
+                # transaction across callbacks; other processes can still cancel.
+                with self._db() as control, source.open("r", encoding="utf-8-sig", newline="") as inp, staging.open(
                         "x", encoding="utf-8", newline="") as out:
                     reader = csv.reader(inp, strict=True)
                     writer = csv.writer(out, lineterminator="\n")
                     headers = next(reader, None)
                     if not headers or any(not h.strip() for h in headers) or len(set(headers)) != len(headers):
                         raise JobError("INPUT_HEADERS", "CSV requires nonempty, unique column headers.")
+                    if len(headers) > self.max_columns:
+                        raise JobError("COLUMN_LIMIT", "CSV exceeds the experimental column limit.")
+                    if any(len(h) > self.max_field_chars for h in headers):
+                        raise JobError("FIELD_LIMIT", "CSV field exceeds the experimental character limit.")
                     writer.writerow(headers)
                     for row in reader:
-                        self._check_cancel(job_id)
+                        self._check_cancel(job_id, control)
+                        self._check_deadline(deadline)
                         count += 1
                         if count > self.max_rows:
                             raise JobError("ROW_LIMIT", "Input exceeds the experimental row limit.")
                         if len(row) != len(headers):
                             raise JobError("INPUT_SCHEMA", "CSV row width does not match its headers.")
+                        if any(len(cell) > self.max_field_chars for cell in row):
+                            raise JobError("FIELD_LIMIT", "CSV field exceeds the experimental character limit.")
                         key = tuple(row)
                         if key not in seen:
                             seen.add(key)
+                            unique_storage += sys.getsizeof(key) + sum(sys.getsizeof(cell) for cell in key)
+                            if unique_storage + sys.getsizeof(seen) > self.max_unique_memory_bytes:
+                                raise JobError("RESOURCE_MEMORY", "Unique-row memory estimate exceeds the experimental budget.")
                             writer.writerow(row)
                             kept += 1
                         if self.fault_hook:
                             out.flush()
                         self._checkpoint("row_written", job_id=job_id, attempt_id=attempt_id)
-                        with self._db() as db:
-                            db.execute("UPDATE attempts SET input_rows=?,output_rows=? WHERE id=?",
-                                       (count, kept, attempt_id))
+                        if count % self.checkpoint_rows == 0:
+                            self._persist_progress(attempt_id, count, kept)
+                            self._check_disk(0)
                         if progress:
                             progress({"job_id": job_id, "attempt_id": attempt_id, "phase": "RUNNING",
                                       "input_rows": count, "output_rows": kept, "duplicates": count-kept})
+                    self._persist_progress(attempt_id, count, kept)
                     out.flush()
                     os.fsync(out.fileno())
                 self._sync_directory(folder)
                 self._checkpoint("staging_written", job_id=job_id, attempt_id=attempt_id)
                 self._check_cancel(job_id)
+                self._check_deadline(deadline)
                 with self._db() as db:
                     db.execute("UPDATE jobs SET state='VALIDATING' WHERE id=?", (job_id,))
                     db.execute("UPDATE attempts SET phase='VALIDATING' WHERE id=?", (attempt_id,))
@@ -326,6 +384,7 @@ class Engine:
                 if checksum(source) != job["input_sha256"]:
                     raise JobError("INPUT_INTEGRITY", "Input snapshot changed during processing.")
                 digest = checksum(staging)
+                self._check_deadline(deadline)
                 artifact_id = uuid.uuid4().hex
                 with self._db() as db:
                     db.execute("INSERT INTO artifacts(id,attempt_id,path,sha256,bytes,status) VALUES(?,?,?,?,?,?)", (artifact_id, attempt_id,
@@ -343,6 +402,7 @@ class Engine:
                     raise JobError("OUTPUT_INTEGRITY", "Published output checksum does not match.")
                 self._check_cancel(job_id)
                 self._checkpoint("before_terminal_commit", job_id=job_id, attempt_id=attempt_id)
+                self._check_deadline(deadline)
                 self._finish(job_id, attempt_id, "SUCCEEDED", "PASSED")
                 committed = True
                 self._checkpoint("terminal_committed", job_id=job_id, attempt_id=attempt_id)
@@ -352,6 +412,7 @@ class Engine:
             except (_Cancelled, KeyboardInterrupt):
                 if committed:
                     return self.inspect(job_id)
+                self._persist_progress(attempt_id, count, kept)
                 self._finish(job_id, attempt_id, "CANCELLED", "NOT_RUN")
                 return self.inspect(job_id)
             except (JobError, UnicodeError, csv.Error, OSError, sqlite3.Error) as exc:
@@ -362,15 +423,21 @@ class Engine:
                 elif isinstance(exc, UnicodeError):
                     error = JobError("INPUT_ENCODING", "CSV must use valid UTF-8 encoding.")
                 elif isinstance(exc, csv.Error):
-                    error = JobError("INPUT_CSV", "CSV syntax or field size is unsupported.")
+                    error = JobError("FIELD_LIMIT", "CSV field exceeds the parser character limit.") if "field larger than field limit" in str(exc) else JobError("INPUT_CSV", "CSV syntax is unsupported.")
                 else:
                     error = JobError("STORAGE_ERROR", "Local storage operation failed.", retryable=True)
+                self._persist_progress(attempt_id, count, kept)
+                self._finish(job_id, attempt_id, "FAILED", "FAILED", error)
+                raise error from None
+            except MemoryError:
+                error = JobError("RESOURCE_MEMORY", "Experimental memory allocation failed.")
                 self._finish(job_id, attempt_id, "FAILED", "FAILED", error)
                 raise error from None
             except Exception:
                 if committed:
                     raise JobError("POST_COMMIT_REPORT", "Execution committed; inspect its saved result.") from None
                 error = JobError("INTERNAL_ERROR", "Unexpected processing failure; review diagnostic evidence.")
+                self._persist_progress(attempt_id, count, kept)
                 self._finish(job_id, attempt_id, "FAILED", "FAILED", error)
                 raise error from None
 

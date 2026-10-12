@@ -8,6 +8,20 @@ import sys
 from .core import Engine, JobError
 
 
+def progress_reporter(engine, job_id, cancel_after=None):
+    """Bound CLI log volume without delaying the cancellation request."""
+    cancel_sent = False
+    def report(event):
+        nonlocal cancel_sent
+        rows = event["input_rows"]
+        if cancel_after is not None and rows >= cancel_after and not cancel_sent:
+            engine.cancel(job_id)
+            cancel_sent = True
+        if rows == 1 or rows % 100 == 0:
+            print(json.dumps({"progress": event}, sort_keys=True), file=sys.stderr, flush=True)
+    return report
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="P5 local CSV core experiment (no client delivery)")
     parser.add_argument("--workspace", required=True, help="Owned local data directory outside source control")
@@ -22,20 +36,17 @@ def main(argv=None):
         commands.add_parser(name).add_argument("job_id")
     commands.add_parser("recover")
     args = parser.parse_args(argv)
+    if args.command == "run" and args.cancel_after_rows is not None and args.cancel_after_rows <= 0:
+        parser.error("--cancel-after-rows must be positive")
     try:
         engine = Engine(args.workspace)
         if args.command == "create":
             result = engine.create(args.input)
         elif args.command == "process":
             job = engine.create(args.input)
-            result = engine.run(job["id"], lambda event: print(
-                json.dumps({"progress": event}, sort_keys=True), file=sys.stderr, flush=True))
+            result = engine.run(job["id"], progress_reporter(engine, job["id"]))
         elif args.command == "run":
-            def progress(event):
-                print(json.dumps({"progress": event}, sort_keys=True), file=sys.stderr, flush=True)
-                if args.cancel_after_rows is not None and event["phase"] == "RUNNING" and event["input_rows"] >= args.cancel_after_rows:
-                    engine.cancel(args.job_id)
-            result = engine.run(args.job_id, progress)
+            result = engine.run(args.job_id, progress_reporter(engine, args.job_id, args.cancel_after_rows))
         elif args.command == "show":
             result = engine.inspect(args.job_id)
         elif args.command == "cancel":
