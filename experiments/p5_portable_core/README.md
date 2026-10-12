@@ -197,3 +197,20 @@ PYTHONDONTWRITEBYTECODE=1 python -m experiments.p5_portable_core.presentation --
 ```
 
 Interactive controls: `list`, `select "path.csv"`, `start`, `status`, `cancel`, `wait`, `review`, `quit`. Configuration is exact duplicate removal only; unsupported configuration is rejected. Review revalidates artifact bytes/checksums;it cannot grant approval. Progress contains the last observed row counts;the separately displayed persisted job state is authoritative. Wait has a bounded timeout;quit cancels/awaits active work. One active job per adapter. No Qt installation,production framework decision or Windows GUI/accessibility evidence.
+
+## Graphical P5 experiment
+Actual PySide6/Qt window uses the existing presentation/application-service boundary;core has no GUIdependency. Experimental dependencies:PySide6-Essentials6.12.0/shiboken6 6.12.0. Production/Windows/distribution approval remains pending. Installation is only authorized for development by current owner task.
+
+```bash
+python -m venv /tmp/fas-p5-gui-venv
+/tmp/fas-p5-gui-venv/bin/python -m pip install --require-hashes --only-binary=:all: -r experiments/p5_portable_core/gui-requirements.txt
+/tmp/fas-p5-gui-venv/bin/python -m experiments.p5_portable_core.gui --workspace /tmp/fas-local-gui
+```
+
+Last command requires a graphical session. Cloud GUI tests use the real Qt offscreen renderer:
+```bash
+QT_QPA_PLATFORM=offscreen PYTHONDONTWRITEBYTECODE=1 /tmp/fas-p5-gui-venv/bin/python -m unittest discover -s experiments/p5_portable_core/gui_tests -v
+PYTHONDONTWRITEBYTECODE=1 python -m unittest discover -s experiments/p5_portable_core/tests -v
+```
+
+Browse CSV/Create job/Start/Cancel/Review controls call realservices. Exactduplicateoperation only;no approval/export button. Close requests cooperativecancellation and waits;blocking storage may delay shutdown. Joblist is persisted;rowprogress is lastobservedsample,notpercentage. Errorfeedback and checksumreview do not grant deliveryapproval. Native Windows setup/display andlicenses/redistribution remain separate gates;do not infer them from Linuxscreenshots.
